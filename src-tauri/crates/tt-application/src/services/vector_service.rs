@@ -9,6 +9,7 @@ use crate::dto::vector_dto::{
     VectorRouteRequestDto, VectorRouteResponseDto, VectorRouteResponseKindDto,
 };
 use crate::errors::ApplicationError;
+use tt_contracts::provider_metadata::SiliconFlowEndpoint;
 use tt_domain::ios_policy::{
     AllowlistMode, AllowlistSetting, IosPolicyActivationReport, IosPolicyScope,
 };
@@ -375,11 +376,7 @@ impl VectorService {
             ),
             VectorSource::SiliconFlow => openai_protocol(
                 "SiliconFlow",
-                if request.siliconflow_endpoint.trim() == "cn" {
-                    "https://api.siliconflow.cn/v1"
-                } else {
-                    "https://api.siliconflow.com/v1"
-                },
+                siliconflow_base_url(&request.siliconflow_endpoint)?,
                 self.required_secret(SecretKeys::SILICONFLOW, "SiliconFlow")
                     .await?,
                 &context.model,
@@ -670,11 +667,7 @@ impl SourceContext {
             | VectorSource::Vllm
             | VectorSource::KoboldCpp => request.api_url.trim().to_string(),
             VectorSource::SiliconFlow => {
-                if request.siliconflow_endpoint.trim() == "cn" {
-                    "https://api.siliconflow.cn/v1".to_string()
-                } else {
-                    "https://api.siliconflow.com/v1".to_string()
-                }
+                siliconflow_base_url(&request.siliconflow_endpoint)?.to_string()
             }
             VectorSource::WorkersAi => request.workers_ai_account_id.trim().to_string(),
             VectorSource::VertexAi => format!(
@@ -782,6 +775,12 @@ fn source_model(source: VectorSource, requested: &str) -> String {
         | VectorSource::WebLlm => "",
     }
     .to_string()
+}
+
+fn siliconflow_base_url(endpoint: &str) -> Result<&'static str, ApplicationError> {
+    SiliconFlowEndpoint::parse_frontend(endpoint)
+        .map(SiliconFlowEndpoint::base_url)
+        .map_err(ApplicationError::ValidationError)
 }
 
 fn normalize_embeddings(
@@ -1022,5 +1021,37 @@ mod tests {
         .expect("KoboldCpp without a reported model must fail");
 
         assert!(error.to_string().contains("model is required"));
+    }
+
+    #[test]
+    fn siliconflow_china_site_survives_the_frontend_request_body() {
+        let request: VectorRouteRequestDto = serde_json::from_value(serde_json::json!({
+            "source": "siliconflow",
+            "model": "Qwen/Qwen3-Embedding-0.6B",
+            "siliconflow_endpoint": "cn",
+        }))
+        .expect("vector request body must deserialize");
+
+        assert_eq!(
+            siliconflow_base_url(&request.siliconflow_endpoint).unwrap(),
+            "https://api.siliconflow.cn/v1"
+        );
+        assert!(
+            SourceContext::from_request(&request)
+                .unwrap()
+                .profile
+                .contains("https://api.siliconflow.cn/v1"),
+            "China site must scope the vector index to the .cn host"
+        );
+    }
+
+    #[test]
+    fn siliconflow_endpoint_rejects_unknown_sites_instead_of_falling_back_to_global() {
+        assert!(
+            siliconflow_base_url("edge")
+                .unwrap_err()
+                .to_string()
+                .contains("Unsupported SiliconFlow endpoint")
+        );
     }
 }

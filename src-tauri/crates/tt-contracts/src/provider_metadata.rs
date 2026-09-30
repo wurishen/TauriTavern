@@ -6,12 +6,22 @@ pub enum SiliconFlowEndpoint {
     China,
 }
 
+const SILICONFLOW_API_BASE: &str = "https://api.siliconflow.com/v1";
+const SILICONFLOW_API_BASE_CN: &str = "https://api.siliconflow.cn/v1";
+
 impl SiliconFlowEndpoint {
     pub fn parse_frontend(value: &str) -> Result<Self, String> {
         match value.trim().to_ascii_lowercase().as_str() {
-            "" | "global" | "com" | "https://api.siliconflow.com/v1" => Ok(Self::Global),
-            "cn" | "china" | "https://api.siliconflow.cn/v1" => Ok(Self::China),
+            "" | "global" | "com" | SILICONFLOW_API_BASE => Ok(Self::Global),
+            "cn" | "china" | SILICONFLOW_API_BASE_CN => Ok(Self::China),
             other => Err(format!("Unsupported SiliconFlow endpoint: {other}")),
+        }
+    }
+
+    pub fn base_url(self) -> &'static str {
+        match self {
+            Self::Global => SILICONFLOW_API_BASE,
+            Self::China => SILICONFLOW_API_BASE_CN,
         }
     }
 }

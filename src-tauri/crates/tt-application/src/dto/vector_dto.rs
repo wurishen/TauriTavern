@@ -32,15 +32,18 @@ pub struct VectorRouteRequestDto {
     #[serde(default)]
     pub embeddings: HashMap<String, Vec<f32>>,
     pub texts: Option<Vec<String>>,
-    #[serde(default)]
+    // The vector settings UI sends these five in snake_case while the rest of the
+    // body uses camelCase; without the aliases serde drops them and the source
+    // silently falls back to its default site/region.
+    #[serde(default, alias = "siliconflow_endpoint")]
     pub siliconflow_endpoint: String,
-    #[serde(default)]
+    #[serde(default, alias = "workers_ai_account_id")]
     pub workers_ai_account_id: String,
-    #[serde(default)]
+    #[serde(default, alias = "vertexai_auth_mode")]
     pub vertexai_auth_mode: String,
-    #[serde(default)]
+    #[serde(default, alias = "vertexai_region")]
     pub vertexai_region: String,
-    #[serde(default)]
+    #[serde(default, alias = "vertexai_express_project_id")]
     pub vertexai_express_project_id: String,
 }
 

@@ -18,8 +18,6 @@ use tt_ports::repositories::provider_metadata_repository::{
 
 const OPENROUTER_API_BASE: &str = "https://openrouter.ai/api/v1";
 const NANOGPT_API_BASE: &str = "https://nano-gpt.com/api";
-const SILICONFLOW_API_BASE: &str = "https://api.siliconflow.com/v1";
-const SILICONFLOW_API_BASE_CN: &str = "https://api.siliconflow.cn/v1";
 
 pub struct HttpProviderMetadataRepository {
     http_clients: Arc<HttpClientPool>,
@@ -226,10 +224,7 @@ impl ProviderMetadataRepository for HttpProviderMetadataRepository {
         api_key: &str,
         endpoint: SiliconFlowEndpoint,
     ) -> Result<Vec<Value>, DomainError> {
-        let base_url = match endpoint {
-            SiliconFlowEndpoint::Global => SILICONFLOW_API_BASE,
-            SiliconFlowEndpoint::China => SILICONFLOW_API_BASE_CN,
-        };
+        let base_url = endpoint.base_url();
         let client = self.client()?;
         let request = client
             .get(format!("{base_url}/models?type=text&sub_type=embedding"))

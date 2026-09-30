@@ -34,8 +34,6 @@ const MOONSHOT_API_BASE: &str = "https://api.moonshot.ai/v1";
 const MOONSHOT_API_BASE_CN: &str = "https://api.moonshot.cn/v1";
 const NANOGPT_API_BASE: &str = "https://nano-gpt.com/api/v1";
 const CHUTES_API_BASE: &str = "https://llm.chutes.ai/v1";
-const SILICONFLOW_API_BASE: &str = "https://api.siliconflow.com/v1";
-const SILICONFLOW_API_BASE_CN: &str = "https://api.siliconflow.cn/v1";
 const WORKERS_AI_API_BASE: &str = "https://api.cloudflare.com/client/v4/accounts";
 const ZAI_API_BASE_COMMON: &str = "https://api.z.ai/api/paas/v4";
 const ZAI_API_BASE_CODING: &str = "https://api.z.ai/api/coding/paas/v4";
@@ -561,12 +559,9 @@ fn supports_reverse_proxy(source: ChatCompletionSource) -> bool {
 }
 
 fn siliconflow_base_url(endpoint: &str) -> Result<&'static str, ApplicationError> {
-    match SiliconFlowEndpoint::parse_frontend(endpoint)
-        .map_err(ApplicationError::ValidationError)?
-    {
-        SiliconFlowEndpoint::Global => Ok(SILICONFLOW_API_BASE),
-        SiliconFlowEndpoint::China => Ok(SILICONFLOW_API_BASE_CN),
-    }
+    SiliconFlowEndpoint::parse_frontend(endpoint)
+        .map(SiliconFlowEndpoint::base_url)
+        .map_err(ApplicationError::ValidationError)
 }
 
 fn workers_ai_base_url(
