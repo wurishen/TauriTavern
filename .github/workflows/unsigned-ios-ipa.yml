@@ -1,0 +1,103 @@
+name: Unsigned iOS IPA
+
+# Sideload build for personal signing. Needs no Apple secrets, so it is kept
+# separate from the signed Canary/TestFlight pipeline in canary-release.yml.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to build
+        required: false
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unsigned-ios-ipa-${{ inputs.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libdbus-1-dev libwebkit2gtk-4.1-dev librsvg2-dev pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - uses: pnpm/setup@v2
+        with:
+          runtime: node@22
+          cache: true
+          install: false
+
+      - uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
+        with:
+          version: latest-known
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm run check
+
+  build:
+    name: unsigned-ios-ipa
+    needs: verify
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - uses: pnpm/setup@v2
+        with:
+          runtime: node@22
+          cache: true
+          install: false
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Allow plain HTTP for sideloaded local endpoints
+        run: ./scripts/ci/configure-mobile-http.sh enable ios
+
+      - name: Build unsigned iOS bundle
+        run: node scripts/tauri-app.mjs --prepare-frontend ios build --verbose
+
+      - name: Report bundle contents
+        run: |
+          find src-tauri/crates/tauritavern/gen/ios/build -name '*.ipa' -o -name '*.app' | sort
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: TauriTavern-unsigned-ios-ipa
+          path: src-tauri/crates/tauritavern/gen/ios/build/**/*.ipa
+          if-no-files-found: error
+          retention-days: 30
