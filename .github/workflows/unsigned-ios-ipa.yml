@@ -92,21 +92,34 @@ jobs:
       - name: Drop the code signing requirement
         run: ./scripts/ci/configure-ios-signing.sh enable
 
-      - name: Build unsigned iOS bundle
-        run: node scripts/tauri-app.mjs --prepare-frontend ios build --verbose
+      # `tauri ios build` always finishes with a signed export, which needs an
+      # Apple account. Drive the same xcodebuild invocation Tauri uses for the
+      # bundle and stop there; the Build Rust Code phase still compiles the app.
+      - name: Build frontend bundle
+        run: node scripts/tauri-before-build.mjs
 
-      # Without an export method the Tauri CLI stops at the .app, so package the
-      # IPA by hand the same way an unsigned archive is normally repackaged.
+      - name: Build unsigned iOS bundle
+        env:
+          TAURITAVERN_SKIP_WEB_BUILD: "1"
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -allowProvisioningUpdates \
+            -scheme tauritavern_iOS \
+            -workspace src-tauri/crates/tauritavern/gen/apple/tauritavern.xcodeproj/project.xcworkspace/ \
+            -sdk iphoneos \
+            -configuration release \
+            -derivedDataPath "${RUNNER_TEMP}/derived-data" \
+            build
+
       - name: Package unsigned IPA
         run: |
           set -euo pipefail
-          app="$(find \
-            src-tauri/crates/tauritavern/gen/ios/build \
-            "$HOME/Library/Developer/Xcode/DerivedData" \
-            -name '*.app' -type d -maxdepth 6 2>/dev/null | head -n 1)"
+          products="${RUNNER_TEMP}/derived-data/Build/Products/Release-iphoneos"
+          app="$(find "${products}" -maxdepth 1 -name '*.app' -type d | head -n 1)"
           if [[ -z "${app}" ]]; then
-            echo "no .app was produced" >&2
-            find src-tauri/crates/tauritavern/gen/ios -maxdepth 4 >&2 || true
+            echo "no .app was produced in ${products}" >&2
+            ls -la "${products}" >&2 || true
             exit 1
           fi
           echo "packaging ${app}"
