@@ -87,17 +87,40 @@ jobs:
       - name: Allow plain HTTP for sideloaded local endpoints
         run: ./scripts/ci/configure-mobile-http.sh enable ios
 
+      # The committed Xcode project pins a signing identity, so xcodebuild would
+      # demand an Apple account before it emits a bundle.
+      - name: Drop the code signing requirement
+        run: ./scripts/ci/configure-ios-signing.sh enable
+
       - name: Build unsigned iOS bundle
         run: node scripts/tauri-app.mjs --prepare-frontend ios build --verbose
 
-      - name: Report bundle contents
+      # Without an export method the Tauri CLI stops at the .app, so package the
+      # IPA by hand the same way an unsigned archive is normally repackaged.
+      - name: Package unsigned IPA
         run: |
-          find src-tauri/crates/tauritavern/gen/ios/build -name '*.ipa' -o -name '*.app' | sort
+          set -euo pipefail
+          app="$(find \
+            src-tauri/crates/tauritavern/gen/ios/build \
+            "$HOME/Library/Developer/Xcode/DerivedData" \
+            -name '*.app' -type d -maxdepth 6 2>/dev/null | head -n 1)"
+          if [[ -z "${app}" ]]; then
+            echo "no .app was produced" >&2
+            find src-tauri/crates/tauritavern/gen/ios -maxdepth 4 >&2 || true
+            exit 1
+          fi
+          echo "packaging ${app}"
+          staging="${RUNNER_TEMP}/unsigned-ipa"
+          rm -rf "${staging}"
+          mkdir -p "${staging}/Payload"
+          cp -R "${app}" "${staging}/Payload/"
+          (cd "${staging}" && zip -qry "${GITHUB_WORKSPACE}/TauriTavern-unsigned.ipa" Payload)
+          ls -lh "${GITHUB_WORKSPACE}/TauriTavern-unsigned.ipa"
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
           name: TauriTavern-unsigned-ios-ipa
-          path: src-tauri/crates/tauritavern/gen/ios/build/**/*.ipa
+          path: TauriTavern-unsigned.ipa
           if-no-files-found: error
           retention-days: 30
